@@ -81,9 +81,40 @@ func writeHTML(r *Report, path string) error {
 		b.WriteString(`</div>`)
 	}
 
+	// Discovered devices (only when --network was used)
+	if r.NetworkScanned {
+		b.WriteString(`<div class="cat">Network — devices discovered (passive)</div>`)
+		if r.Subnet != "" {
+			b.WriteString(`<div class="dim">scope: ` + esc(r.Subnet) + `</div>`)
+		}
+		if len(r.Devices) == 0 {
+			b.WriteString(`<div class="f info"><div class="d">No devices found (ARP cache empty or network quiet).</div></div>`)
+		} else {
+			for _, d := range r.Devices {
+				b.WriteString(`<div class="f info"><div class="ft"><b>` + esc(d.IP) + `</b>`)
+				if d.MAC != "" {
+					b.WriteString(`<span class="badge b-info">` + esc(d.MAC) + `</span>`)
+				}
+				b.WriteString(`</div>`)
+				meta := d.Source
+				if d.Vendor != "" {
+					meta += " · " + d.Vendor
+				}
+				if d.Info != "" {
+					meta += " · " + d.Info
+				}
+				b.WriteString(`<div class="d">` + esc(meta) + `</div></div>`)
+			}
+		}
+	}
+
+	netNote := "This run was a host-only check; network posture is a separate, opt-in step."
+	if r.NetworkScanned {
+		netNote = "Network discovery was passive (ARP cache + SSDP). No ports were scanned."
+	}
 	b.WriteString(`<div class="priv">Generated locally by ` + esc(r.Tool) +
 		`. All results stay on this machine — nothing was transmitted to ByTE X Bit or anyone else. ` +
-		`This is a host-only check; network posture is a separate, opt-in step.</div>`)
+		esc(netNote) + `</div>`)
 	b.WriteString(`</div></body></html>`)
 
 	return os.WriteFile(path, []byte(b.String()), 0o644)

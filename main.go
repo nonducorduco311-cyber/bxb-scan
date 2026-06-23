@@ -11,7 +11,7 @@ import (
 
 const (
 	toolName = "ByTE X Bit Posture Scanner"
-	stage    = "N0 host check"
+	stage    = "host + passive network"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=...".
@@ -32,6 +32,7 @@ func main() {
 	htmlOut := flag.String("html", "", "also write a local HTML report to this path (e.g. report.html)")
 	noColor := flag.Bool("no-color", false, "disable colored terminal output")
 	noPause := flag.Bool("no-pause", false, "do not wait for a keypress before exiting (for scripts)")
+	network := flag.Bool("network", false, "also run passive local-network discovery (ARP cache + SSDP; no port scanning)")
 	flag.Parse()
 
 	host := baseHostInfo()
@@ -44,7 +45,10 @@ func main() {
 		Host:    host,
 	}
 
-	collect(r) // platform-specific
+	collect(r) // platform-specific host checks
+	if *network {
+		runNetwork(r) // passive discovery, opt-in
+	}
 	r.sortFindings()
 
 	renderTerminal(r, !*noColor)
@@ -144,13 +148,44 @@ func renderTerminal(r *Report, color bool) {
 		}
 	}
 
+	if r.NetworkScanned {
+		fmt.Println()
+		fmt.Println("  " + c(cBold, "Network — devices discovered (passive)"))
+		if r.Subnet != "" {
+			fmt.Println("  " + c(cDim, "scope: "+r.Subnet))
+		}
+		if len(r.Devices) == 0 {
+			fmt.Println("    " + c(cDim, "No devices found (ARP cache empty or network quiet)."))
+		} else {
+			for _, d := range r.Devices {
+				line := "    " + d.IP
+				if d.MAC != "" {
+					line += "   " + d.MAC
+				}
+				fmt.Println(line)
+				extras := []string{d.Source}
+				if d.Vendor != "" {
+					extras = append(extras, d.Vendor)
+				}
+				if d.Info != "" {
+					extras = append(extras, d.Info)
+				}
+				fmt.Println("           " + c(cDim, strings.Join(extras, " · ")))
+			}
+		}
+	}
+
 	fmt.Println()
 	fmt.Println(c(cDim, "  "+strings.Repeat("-", 60)))
 	if fail > 0 || warn > 0 {
 		fmt.Println(c(cBold, "  Start with the FAIL items, then the WARNs."))
 	} else {
-		fmt.Println(c(cGreen, "  No issues flagged on this host. Re-check after any major change."))
+		fmt.Println(c(cGreen, "  No issues flagged. Re-check after any major change."))
 	}
-	fmt.Println(c(cDim, "  This is a host-only check (N0). Network checks are a separate, opt-in step."))
+	if r.NetworkScanned {
+		fmt.Println(c(cDim, "  Network discovery was passive (ARP cache + SSDP). No ports were scanned."))
+	} else {
+		fmt.Println(c(cDim, "  Host-only check. Add --network for passive local-network discovery."))
+	}
 	fmt.Println()
 }

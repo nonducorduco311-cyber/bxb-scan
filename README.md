@@ -17,6 +17,8 @@ network scanning is a separate, opt-in step added in a later version.
 - Administrative account count
 - Legacy/risky settings (e.g. SMBv1 on Windows, SSH root login on Linux)
 - Installed software inventory (count)
+- **Passive local-network discovery** (opt-in `--network`): lists devices via the
+  ARP cache and SSDP/UPnP service discovery. No port scanning, local subnet only.
 
 Every WARN/FAIL comes with a plain-language **why it matters** and a concrete **fix**.
 
@@ -41,6 +43,7 @@ GOOS=windows GOARCH=amd64 go build -o bxb-scan.exe .    # Windows from any OS
 ./bxb-scan                       # on-screen report
 ./bxb-scan --html report.html    # also write a local HTML report
 ./bxb-scan --no-color            # plain text (no ANSI colors)
+./bxb-scan --network             # also do passive local-network discovery
 ```
 
 On Windows, **double-click `bxb-scan.exe`** — it runs the scan and waits for a
@@ -60,7 +63,9 @@ but the scanner runs fine as a normal user.
 - Read-only. It inspects settings; it never changes anything.
 - Local-only. No network calls. The optional HTML report is written to a path
   you choose, on your machine.
-- This version does not touch the network at all.
+- By default it does not touch the network. With `--network` it reads the ARP
+  cache (passive) and sends standard SSDP service-discovery multicast — it never
+  scans ports, and it stays on the local subnet.
 
 ## License
 

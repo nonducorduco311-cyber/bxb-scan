@@ -60,6 +60,20 @@ type Report struct {
 	When     string
 	Host     HostInfo
 	Findings []Finding
+
+	// Network discovery (populated only when --network is used).
+	NetworkScanned bool
+	Subnet         string
+	Devices        []Device
+}
+
+// Device is one host seen on the local network via passive discovery.
+type Device struct {
+	IP     string
+	MAC    string
+	Vendor string // best-effort, from a small built-in OUI map
+	Info   string // e.g. SSDP/UPnP server string
+	Source string // "ARP cache", "SSDP", "ARP + SSDP"
 }
 
 // HostInfo is basic identity collected up front.
