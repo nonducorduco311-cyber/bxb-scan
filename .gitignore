@@ -1,0 +1,15 @@
+# build output
+dist/
+*.exe
+bxb-scan
+bxb-scan-*
+SHA256SUMS*.txt
+*.zip
+
+# secrets / junk
+*.env
+.env*
+*.key
+*.pem
+*secret*
+.DS_Store
