@@ -126,6 +126,35 @@ func sortDevices(d []Device) {
 	})
 }
 
+// isRealDevice rejects broadcast, multicast, and unspecified entries that show
+// up in the OS ARP cache but are not actual hosts. If subnet is known, it also
+// drops addresses outside the local subnet (e.g. virtual adapters on other nets).
+func isRealDevice(ip, mac string, subnet *net.IPNet) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	v4 := parsed.To4()
+	if v4 == nil {
+		return false
+	}
+	// broadcast / multicast / unspecified IPs are not devices
+	if v4[3] == 255 || parsed.Equal(net.IPv4bcast) || parsed.IsMulticast() ||
+		parsed.IsUnspecified() || parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast() {
+		return false
+	}
+	// broadcast / multicast MACs (ff:ff:.. and 01:00:5e:..)
+	n := normMAC(mac)
+	if n == "FFFFFFFFFFFF" || strings.HasPrefix(n, "01005E") || strings.HasPrefix(n, "3333") {
+		return false
+	}
+	// keep only what's on our own subnet, when we know it
+	if subnet != nil && !subnet.Contains(parsed) {
+		return false
+	}
+	return true
+}
+
 // runNetwork performs passive local-network discovery and records the results.
 // It never scans ports; it reads the OS ARP cache and listens for SSDP replies.
 func runNetwork(r *Report) {
@@ -133,16 +162,30 @@ func runNetwork(r *Report) {
 	myIP, cidr := localSubnet()
 	r.Subnet = cidr
 
+	// parse our subnet so we can scope out off-net / broadcast / multicast noise
+	var subnet *net.IPNet
+	if cidr != "" {
+		if _, ipnet, err := net.ParseCIDR(cidr); err == nil {
+			subnet = ipnet
+		}
+	}
+
 	devs := map[string]*Device{}
 
 	// 1) ARP / neighbor cache — fully passive (existing OS state, no traffic).
 	for _, e := range arpTable() {
+		if !isRealDevice(e.IP, e.MAC, subnet) {
+			continue
+		}
 		devs[e.IP] = &Device{IP: e.IP, MAC: e.MAC, Vendor: vendorFor(e.MAC), Source: "ARP cache"}
 	}
 
 	// 2) SSDP / UPnP — standard multicast service discovery (not a port scan).
 	ssdpCount := 0
 	for _, s := range ssdpDiscover(3 * time.Second) {
+		if !isRealDevice(s.IP, "", subnet) {
+			continue
+		}
 		ssdpCount++
 		if d, ok := devs[s.IP]; ok {
 			d.Info = s.Server

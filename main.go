@@ -1,13 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// stdin is a single shared reader. Using one reader avoids losing buffered
+// bytes between successive prompts (menu, yes/no, and the exit pause).
+var stdin = bufio.NewReader(os.Stdin)
 
 const (
 	toolName = "ByTE X Bit Posture Scanner"
@@ -29,11 +35,44 @@ func atoi(s string) int {
 }
 
 func main() {
-	htmlOut := flag.String("html", "", "also write a local HTML report to this path (e.g. report.html)")
+	htmlOut := flag.String("html", "", "write a local HTML report to this path (skips the menu)")
 	noColor := flag.Bool("no-color", false, "disable colored terminal output")
-	noPause := flag.Bool("no-pause", false, "do not wait for a keypress before exiting (for scripts)")
-	network := flag.Bool("network", false, "also run passive local-network discovery (ARP cache + SSDP; no port scanning)")
+	noPause := flag.Bool("no-pause", false, "do not wait for a keypress before exiting (implies --host-only, no menu)")
+	network := flag.Bool("network", false, "scan host + passive local-network discovery (skips the menu)")
+	hostOnly := flag.Bool("host-only", false, "scan this computer only (skips the menu)")
 	flag.Parse()
+
+	// Decide the scan scope. Flags always win and skip the interactive menu so
+	// scripted/piped runs never block. Only a bare interactive run shows the menu.
+	doNetwork := false
+	saveReport := *htmlOut != ""
+	reportPath := *htmlOut
+
+	switch {
+	case *network:
+		doNetwork = true
+	case *hostOnly || *noPause:
+		doNetwork = false
+	case *htmlOut != "":
+		// an explicit --html run is non-interactive; default to host-only
+		doNetwork = false
+	default:
+		// no scope flag: show the menu if we have an interactive console
+		choice := menuScope()
+		switch choice {
+		case scopeQuit:
+			return
+		case scopeNetwork:
+			doNetwork = true
+		default: // scopeHost or no-input fallback
+			doNetwork = false
+		}
+		// offer to save a report (only in the interactive path)
+		if choice != scopeQuit && askYesNo("Save an HTML report you can keep? [y/N]: ") {
+			saveReport = true
+			reportPath = defaultReportPath()
+		}
+	}
 
 	host := baseHostInfo()
 	enrichHost(&host)
@@ -46,18 +85,18 @@ func main() {
 	}
 
 	collect(r) // platform-specific host checks
-	if *network {
+	if doNetwork {
 		runNetwork(r) // passive discovery, opt-in
 	}
 	r.sortFindings()
 
 	renderTerminal(r, !*noColor)
 
-	if *htmlOut != "" {
-		if err := writeHTML(r, *htmlOut); err != nil {
+	if saveReport {
+		if err := writeHTML(r, reportPath); err != nil {
 			fmt.Fprintf(os.Stderr, "\ncould not write HTML report: %v\n", err)
 		} else {
-			fmt.Printf("\nLocal HTML report written to: %s\n", *htmlOut)
+			fmt.Printf("\n  Report saved: %s\n", reportPath)
 		}
 	}
 
@@ -65,6 +104,72 @@ func main() {
 	// Pausing here (always, unless --no-pause) guarantees the window stays open
 	// long enough to read the report. On Linux/macOS this is a no-op.
 	pauseBeforeExit(*noPause)
+}
+
+// scan-scope choices returned by the menu
+const (
+	scopeHost = iota
+	scopeNetwork
+	scopeQuit
+)
+
+// menuScope shows the interactive choice. If input can't be read (piped,
+// non-interactive, no console), it safely defaults to host-only — network
+// discovery is never triggered without an explicit choice.
+func menuScope() int {
+	fmt.Println()
+	fmt.Println("  " + toolName + " " + version)
+	fmt.Println()
+	fmt.Println("  What would you like to scan?")
+	fmt.Println("    1) This computer only            (host posture)")
+	fmt.Println("    2) This computer + local network (adds passive device discovery)")
+	fmt.Println("    q) Quit")
+	fmt.Print("\n  Choose [1/2/q]: ")
+
+	line, ok := readLine()
+	if !ok {
+		return scopeHost // no input available → safe default
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "2":
+		return scopeNetwork
+	case "q", "quit", "exit":
+		return scopeQuit
+	default: // "1", blank Enter, or anything else → host-only
+		return scopeHost
+	}
+}
+
+// askYesNo prompts and returns true only on an explicit yes. Defaults to no,
+// including when no input is available.
+func askYesNo(prompt string) bool {
+	fmt.Print("  " + prompt)
+	line, ok := readLine()
+	if !ok {
+		return false
+	}
+	a := strings.ToLower(strings.TrimSpace(line))
+	return a == "y" || a == "yes"
+}
+
+// defaultReportPath puts the report next to the executable (or CWD) with a
+// timestamp so repeated runs don't overwrite each other.
+func defaultReportPath() string {
+	name := "bxb-posture-" + time.Now().Format("2006-01-02-150405") + ".html"
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), name)
+	}
+	return name
+}
+
+// readLine reads one line from stdin, returning ok=false if stdin is closed
+// or unavailable (so non-interactive runs fall back to safe defaults).
+func readLine() (string, bool) {
+	line, err := stdin.ReadString('\n')
+	if err != nil && line == "" {
+		return "", false
+	}
+	return line, true
 }
 
 // ----- terminal rendering -----

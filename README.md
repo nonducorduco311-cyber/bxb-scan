@@ -39,21 +39,29 @@ GOOS=windows GOARCH=amd64 go build -o bxb-scan.exe .    # Windows from any OS
 
 ## Run
 
-```bash
-./bxb-scan                       # on-screen report
-./bxb-scan --html report.html    # also write a local HTML report
-./bxb-scan --no-color            # plain text (no ANSI colors)
-./bxb-scan --network             # also do passive local-network discovery
+Just run it. With no arguments it shows a short menu:
+
+```
+  What would you like to scan?
+    1) This computer only            (host posture)
+    2) This computer + local network (adds passive device discovery)
+    q) Quit
 ```
 
-On Windows, **double-click `bxb-scan.exe`** — it runs the scan and waits for a
-keypress so the window stays open. Or from PowerShell:
-```powershell
-.xb-scan.exe --html report.html
-.xb-scan.exe --no-pause          # for scripts (don't wait for Enter)
-```powershell
-.\bxb-scan.exe --html report.html
+Pick 1 or 2, then choose whether to save an HTML report you can keep.
+
+Flags skip the menu (useful for scripts):
+
+```bash
+./bxb-scan --host-only           # host posture only
+./bxb-scan --network             # host + passive local-network discovery
+./bxb-scan --html report.html    # host scan, write an HTML report
+./bxb-scan --no-color            # plain text (no ANSI colors)
+./bxb-scan --no-pause            # don't wait for Enter (implies --host-only)
 ```
+
+On Windows, **double-click the `.exe`** — it shows the menu and stays open until
+you press Enter. On Linux/macOS, run it from a terminal.
 
 Some Windows checks (BitLocker) report more detail when run as Administrator,
 but the scanner runs fine as a normal user.

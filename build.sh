@@ -3,7 +3,7 @@
 # Bump VERSION for each release; filenames and the in-app version follow it,
 # which also sidesteps CDN/browser download caching (every release = new URL).
 set -e
-VERSION="0.2.0"
+VERSION="0.2.2"
 
 mkdir -p dist
 LDFLAGS="-s -w -X main.version=${VERSION}"
